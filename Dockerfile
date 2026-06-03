@@ -108,7 +108,7 @@ RUN git clone https://github.com/Clybius/ComfyUI-Extra-Samplers.git /comfyui/cus
 RUN git clone https://github.com/cubiq/ComfyUI_essentials.git /comfyui/custom_nodes/ComfyUI_essentials
 RUN git clone https://github.com/mfg637/ComfyUI-ScheduledGuider-Ext.git /comfyui/custom_nodes/ComfyUI-ScheduledGuider-Ext
 RUN git clone https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch.git /comfyui/custom_nodes/ComfyUI-Inpaint-CropAndStitch
-RUN git clone https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git /comfyui/custom_nodes/ComfyUI_UltimateSDUpscale
+RUN git clone https://github.com/endman100/ComfyUI_UltimateSDUpscale_lazyload.git /comfyui/custom_nodes/ComfyUI_UltimateSDUpscale_lazyload
 RUN git clone https://github.com/BlenderNeko/ComfyUI_TiledKSampler.git /comfyui/custom_nodes/ComfyUI_TiledKSampler
 RUN git clone https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git /comfyui/custom_nodes/ComfyUI-Custom-Scripts
 RUN git clone https://github.com/ramyma/A8R8_ComfyUI_nodes.git /comfyui/custom_nodes/A8R8_ComfyUI_nodes
@@ -147,6 +147,12 @@ RUN cd /comfyui/custom_nodes/ComfyUI-Impact-Pack && \
 # ComfyUI-Impact-Subpack extra install
 RUN cd /comfyui/custom_nodes/ComfyUI-Impact-Subpack && \
     python install.py
+
+# Pre-generate Python bytecode for ComfyUI and installed packages.
+RUN python -m compileall -q \
+    -x '(/tests?/|/test/|_test\.py$|test_.*\.py$)' \
+    /comfyui "$(python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')" \
+    || true
 
 # rename comfyui_controlnet_aux/config.example.yaml to comfyui_controlnet_aux/config.yaml
 # RUN mv /comfyui/custom_nodes/comfyui_controlnet_aux/config.example.yaml /comfyui/custom_nodes/comfyui_controlnet_aux/config.yaml
