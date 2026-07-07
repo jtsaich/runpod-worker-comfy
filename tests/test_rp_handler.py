@@ -124,7 +124,7 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertEqual(result, test_data)
 
     @patch("rp_handler.os.path.exists")
-    @patch("rp_handler.rp_upload.upload_image")
+    @patch("src.rp_handler.runpod_upload_image")
     @patch.dict(
         os.environ, {"COMFY_OUTPUT_PATH": RUNPOD_WORKER_COMFY_TEST_RESOURCES_IMAGES}
     )
@@ -142,7 +142,7 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         self.assertEqual(result["status"], "success")
 
     @patch("rp_handler.os.path.exists")
-    @patch("rp_handler.rp_upload.upload_image")
+    @patch("src.rp_handler.runpod_upload_image")
     @patch.dict(
         os.environ,
         {
@@ -154,8 +154,10 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         # Mock the os.path.exists to return True, simulating that the image exists
         mock_exists.return_value = True
 
-        # Mock the rp_upload.upload_image to return a simulated URL
-        mock_upload_image.return_value = "http://example.com/uploaded/image.png"
+        mock_upload_image.return_value = (
+            "http://example.com/uploaded/image.png",
+            "runpod-temp/123/image.png",
+        )
 
         # Define the outputs and job_id for the test
         outputs = {"node_id": {"images": [{"filename": "ComfyUI_00001_.png", "subfolder": "test"}]}}
@@ -166,13 +168,72 @@ class TestRunpodWorkerComfy(unittest.TestCase):
 
         # Assertions
         self.assertEqual(result["status"], "success")
-        self.assertEqual(result["message"], ["http://example.com/uploaded/image.png"])
-        mock_upload_image.assert_called_once_with(
-            job_id, "./test_resources/images/test/ComfyUI_00001_.png"
+        self.assertEqual(
+            result["message"],
+            [{
+                "url": "http://example.com/uploaded/image.png",
+                "obj_key": "runpod-temp/123/image.png",
+            }],
+        )
+        mock_upload_image.assert_called_once()
+        upload_args, upload_kwargs = mock_upload_image.call_args
+        self.assertEqual(upload_args[0], job_id)
+        self.assertEqual(
+            os.path.normpath(upload_args[1]),
+            os.path.normpath(os.path.join("./test_resources/images", "test", "ComfyUI_00001_.png")),
+        )
+        self.assertEqual(upload_kwargs, {"bucket_name": "runpod-temp"})
+
+    @patch("src.rp_handler.runpod_upload_image")
+    @patch.dict(
+        os.environ,
+        {
+            "COMFY_OUTPUT_PATH": RUNPOD_WORKER_COMFY_TEST_RESOURCES_IMAGES,
+            "BUCKET_ENDPOINT_URL": "http://example.com",
+        },
+    )
+    def test_text_file_output_is_uploaded_from_comfy_history_files(self, mock_upload_file):
+        text_dir = os.path.join(RUNPOD_WORKER_COMFY_TEST_RESOURCES_IMAGES, "FireOCR")
+        os.makedirs(text_dir, exist_ok=True)
+        text_path = os.path.join(text_dir, "fire_ocr_test.txt")
+        with open(text_path, "w", encoding="utf-8") as file:
+            file.write("recognized text")
+        mock_upload_file.return_value = (
+            "http://example.com/uploaded/fire_ocr_test.txt",
+            "runpod-temp/123/fire_ocr_test.txt",
         )
 
+        outputs = {
+            "node_id": {
+                "files": [{"filename": "fire_ocr_test.txt", "subfolder": "FireOCR"}],
+            }
+        }
+        job_id = "123"
+
+        try:
+            result = rp_handler.process_output_images(outputs, job_id, [])
+        finally:
+            os.remove(text_path)
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(
+            result["message"],
+            [{
+                "url": "http://example.com/uploaded/fire_ocr_test.txt",
+                "obj_key": "runpod-temp/123/fire_ocr_test.txt",
+            }],
+        )
+        mock_upload_file.assert_called_once()
+        upload_args, upload_kwargs = mock_upload_file.call_args
+        self.assertEqual(upload_args[0], job_id)
+        self.assertEqual(
+            os.path.normpath(upload_args[1]),
+            os.path.normpath(os.path.join("./test_resources/images", "FireOCR", "fire_ocr_test.txt")),
+        )
+        self.assertEqual(upload_kwargs, {"bucket_name": "runpod-temp"})
+
     @patch("rp_handler.os.path.exists")
-    @patch("rp_handler.rp_upload.upload_image")
+    @patch("src.rp_handler.runpod_upload_image")
     @patch.dict(
         os.environ,
         {
@@ -188,8 +249,10 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         # Simulate the file existing in the output path
         mock_exists.return_value = True
 
-        # When AWS credentials are wrong or missing, upload_image should return 'simulated_uploaded/...'
-        mock_upload_image.return_value = "simulated_uploaded/image.png"
+        mock_upload_image.return_value = (
+            "simulated_uploaded/image.png",
+            "simulated_uploaded/image.png",
+        )
 
         outputs = {
             "node_id": {"images": [{"filename": "ComfyUI_00001_.png", "subfolder": ""}]}
@@ -199,7 +262,7 @@ class TestRunpodWorkerComfy(unittest.TestCase):
         result = rp_handler.process_output_images(outputs, job_id, [])
 
         # Check if the image was saved to the 'simulated_uploaded' directory
-        self.assertIn("simulated_uploaded", result["message"][0])
+        self.assertIn("simulated_uploaded", result["message"][0]["url"])
         self.assertEqual(result["status"], "success")
 
     @patch("rp_handler.requests.post")
